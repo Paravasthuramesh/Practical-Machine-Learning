@@ -1,0 +1,109 @@
+---
+title: "Practical Machine Learning Course Final Project"
+author: "Paravasthuramesh Velayuthasamy"
+date: "28OCT2016"
+output: html_document
+---
+
+
+## Overview  
+In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+People regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. The goal of this project is to predict the manner in which they did the exercise. 
+
+## Data Preprocessing  
+```{r, cache = T, warning = F}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+```
+  
+### Load the dataset
+After downloading the data from the data source, we can read the two csv files into two data frames.  
+```{r, cache = T,warning = F }
+dsTrainingBase <- read.csv("./data/pml-training.csv")
+dsTestingBase <- read.csv("./data/pml-testing.csv")
+dim(dsTrainingBase)
+dim(dsTestingBase)
+```
+The training DataSet inlcude 19,622 rows 160 variable and the testing DataSet include 20 rows nd 160 variables. 
+
+### Clean the data set - Remove columns [Missing values and not needed]
+```{r, cache = T, echo = F}
+sum(complete.cases(dsTrainingBase))
+dsTrainingBase <- dsTrainingBase[, colSums(is.na(dsTrainingBase)) == 0] 
+dsTestingBase <- dsTestingBase[, colSums(is.na(dsTestingBase)) == 0] 
+```  
+Delete the columns not relevant to the analysis.
+```{r, cache = T}
+
+classe <- dsTrainingBase$classe
+
+dsTrainingDelete <- grepl("^X|timestamp|window", names(dsTrainingBase))
+dsTrainingBase <- dsTrainingBase[, !dsTrainingDelete]
+dsTrainingNew <- dsTrainingBase[, sapply(dsTrainingBase, is.numeric)]
+
+dsTrainingNew$classe <- classe
+
+dsTestDelete <- grepl("^X|timestamp|window", names(dsTestingBase))
+dsTestingBase <- dsTestingBase[, !dsTestDelete]
+dsTestNew <- dsTestingBase[, sapply(dsTestingBase, is.numeric)]
+
+```
+After data clean process we have [19622 rows, 53 variables], [20 rows and 53 variables] with in Training and Test data set respectively. The "classe" variable is still in the cleaned training set.
+
+### Data Slicing
+Slice dataset into 70% training and 30% testing which will be used for validataion dataset for Cross validation.
+
+```{r, cache = T}
+set.seed(53) 
+inTrain <- createDataPartition(dsTrainingNew$classe, p=0.70, list=F)
+trainData <- dsTrainingNew[inTrain, ]
+testData <- dsTrainingNew[-inTrain, ]
+```
+
+## Data Modeling
+Random forest model has high accuracy in most case and this model selects most important variables. Also will use 5 fold cross validation with this.
+```{r, cache = T}
+cvRF <- trainControl(method="cv", 5)
+modFitRandForest <- train(classe ~ ., data=trainData, method="rf", trControl=cvRF, ntree=250)
+modFitRandForest
+```
+
+Then, we estimate the performance of the model on the validation data set.  
+
+```{r, cache = T}
+predictRf <- predict(modFitRandForest, testData)
+confusionMatrix(testData$classe, predictRf)
+```
+```{r, cache = T}
+modAccuracy <- postResample(predictRf, testData$classe)
+modAccuracy
+modSampleError <- 1 - as.numeric(confusionMatrix(testData$classe, predictRf)$overall[1])
+modSampleError
+```
+Estimated accuracy of the model is 99.33% and the estimated sample error is 0.66%.
+
+## Predicting for Test DataSet
+Finally prediting on the test dataset.
+```{r, cache = T}
+answers <- predict(modFitRandForest, dsTestNew[, -length(names(dsTestNew))])
+answers
+```  
+Creat 20 files with the answers. 
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
+
+
+
